@@ -1,6 +1,8 @@
 const { client } = require('./../services/initializer');
 const {ObjectId} = require("mongodb");
 
+const { createRoomSeats} = require('./../utils/index');
+
 const getRooms = async (req, res) => {
     try {
         const room = await client.db('cinema').collection('rooms').find().toArray();
@@ -17,94 +19,130 @@ const getRooms = async (req, res) => {
     }
 }
 
-const getMoviesByRoom = async (req, res) => {
+const getRoom = async (req, res) => {
     try {
-        const { roomName } = req.params
+        const { id } = req.params
 
-        const greenRoom = await client.db('cinema').collection('rooms').findOne({ name: roomName });
+        const room = await client.db('cinema').collection('rooms').findOne({
+            _id: new ObjectId(id)
+        });
 
-        if (!greenRoom) {
-            console.log(`Room with name ${roomName} not found`)
+        if (!room) {
+            console.log(`Room with id - ${id} not found`)
             return res.status(404).json({
                 message: "Room not found"
             });
         }
 
-        const moviesByRoom = await client.db('cinema').collection('movies').find({ roomId: greenRoom._id }).toArray();
-
         return res.status(200).json({
             message: 'Successfully',
-            data: moviesByRoom,
+            data: room,
         });
     }catch (e) {
-        console.log('getMoviesByRoom', e);
+        console.log('getRoom', e);
         return res.status(500).json({
             message: 'Internal server error'
         });
     }
 }
 
-const getMovieDetails = async (req, res) => {
+const createRoom = async (req, res) => {
     try {
+        const data = req.body
+
+        const existedRoom = await client.db('cinema').collection('rooms').findOne({
+            name: data.name
+        });
+
+        if (existedRoom) {
+            console.log(`Room with this name already created.`)
+            return res.status(404).json({
+                message: "Room with this name already created."
+            });
+        }
+        const seats = createRoomSeats(data.row, data.column)
+
+        const room = await client.db('cinema').collection('rooms').insertOne({
+                ...data,
+                seats,
+        });
+
+        return res.status(200).json({
+            message: 'Room successfully created.',
+            data: room,
+        });
+    }catch (e) {
+        console.log('createRoom', e);
+        return res.status(500).json({
+            message: 'Internal server error'
+        });
+    }
+}
+
+const updateRoom = async (req, res) => {
+    try {
+        const data = req.body
         const { id } = req.params
 
-        const movie = await client.db('cinema').collection('movies').findOne({ _id: new ObjectId(id) });
+        const room = await client.db('cinema').collection('rooms').findOne({
+            _id: new ObjectId(id)
+        });
 
-        if (!movie) {
-            console.log(`Movie with id - ${id} not found`)
+        if (!room) {
+            console.log(`Room with id - ${room} not found`)
             return res.status(404).json({
-                message: "Movie not found"
+                message: "Room not found"
             });
         }
 
-        return res.status(200).json({
-            message: 'Successfully',
-            data: movie,
-        });
-    }catch (e) {
-        console.log('getMovieDetails', e);
-        return res.status(500).json({
-            message: 'Internal server error'
-        });
-    }
-}
+        const seats = createRoomSeats(data.row, data.column)
 
-const reserveMovieSeats = async (req, res) => {
-    try {
-        const { seats, movieId } = req.body
-
-        const movie = await client.db('cinema').collection('movies').findOne({ _id: new ObjectId(movieId) });
-
-        if (!movie) {
-            console.log(`Movie with id - ${movieId} not found`)
-            return res.status(404).json({
-                message: "Movie not found"
-            });
-        }
-
-        for (let seat of seats){
-            if (movie.unavailableSeats.includes(seat)){
-                return res.status(400).json({
-                    message: "These seats have already reserved. Please choose another seats."
-                });
-            }
-        }
-
-        await client.db('cinema').collection('movies').updateOne(
-            { _id: new ObjectId(movieId) },
-            { $push: { unavailableSeats: { $each: seats } } }
+        await client.db('cinema').collection('rooms').updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { ...data, seats } }
         );
 
         return res.status(200).json({
-            message: "Seats reserved successfully",
-            data: seats,
+            message: 'Room successfully updated.',
+            data: data,
         });
     }catch (e) {
-        console.log('getMovieDetails', e);
+        console.log('updateRoom', e);
         return res.status(500).json({
             message: 'Internal server error'
         });
     }
 }
 
-module.exports = { getRooms, getMoviesByRoom, getMovieDetails, reserveMovieSeats }
+const deleteRoom = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const room = await client.db('cinema').collection('rooms').findOne({
+            _id: new ObjectId(id)
+        });
+
+        if (!room) {
+            console.log(`Room with id - ${id} not found`)
+            return res.status(404).json({
+                message: "Room not found"
+            });
+        }
+
+        await client.db('cinema').collection('rooms').deleteOne({
+            _id: new ObjectId(id)
+        });
+
+        return res.status(200).json({
+            message: 'Room successfully deleted.',
+            data: [],
+        });
+    }catch (e) {
+        console.log('deleteRoom', e);
+        return res.status(500).json({
+            message: 'Internal server error'
+        });
+    }
+}
+
+module.exports = { getRooms, getRoom, createRoom, updateRoom, deleteRoom }
